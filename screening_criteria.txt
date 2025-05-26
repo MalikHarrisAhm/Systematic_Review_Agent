@@ -1,0 +1,1 @@
+{"inclusion": ["- Makes use of data from the Imperial College REACT (Real-time Assessment of Community Transmission findings) study"], "exclusion": ["- Does not use data from the Imperial College REACT (Real-time Assessment of Community Transmission findings) study"]}

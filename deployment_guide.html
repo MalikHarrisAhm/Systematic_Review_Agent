@@ -1,0 +1,226 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Systematic Review Agent - Deployment Guide</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            line-height: 1.6;
+            max-width: 1000px;
+            margin: 0 auto;
+            padding: 20px;
+            color: #333;
+        }
+        h1, h2, h3 {
+            color: #2c3e50;
+        }
+        h1 {
+            border-bottom: 2px solid #3498db;
+            padding-bottom: 10px;
+        }
+        h2 {
+            margin-top: 30px;
+            border-bottom: 1px solid #bdc3c7;
+            padding-bottom: 5px;
+        }
+        code {
+            background-color: #f8f9fa;
+            padding: 2px 5px;
+            border-radius: 3px;
+            font-family: 'Courier New', Courier, monospace;
+        }
+        pre {
+            background-color: #f8f9fa;
+            padding: 15px;
+            border-radius: 5px;
+            overflow-x: auto;
+        }
+        .note {
+            background-color: #e8f4f8;
+            border-left: 4px solid #3498db;
+            padding: 15px;
+            margin: 20px 0;
+        }
+        .warning {
+            background-color: #fff3cd;
+            border-left: 4px solid #ffc107;
+            padding: 15px;
+            margin: 20px 0;
+        }
+    </style>
+</head>
+<body>
+    <h1>Systematic Review Agent - Deployment Guide</h1>
+    
+    <div class="note">
+        This guide provides step-by-step instructions for deploying the Systematic Review Agent web application using various hosting platforms.
+    </div>
+
+    <h2>Table of Contents</h2>
+    <ol>
+        <li><a href="#prerequisites">Prerequisites</a></li>
+        <li><a href="#local-deployment">Local Deployment</a></li>
+        <li><a href="#streamlit-cloud">Deployment on Streamlit Cloud</a></li>
+        <li><a href="#heroku">Deployment on Heroku</a></li>
+        <li><a href="#aws">Deployment on AWS</a></li>
+        <li><a href="#troubleshooting">Troubleshooting</a></li>
+    </ol>
+
+    <h2 id="prerequisites">1. Prerequisites</h2>
+    <p>Before deploying the application, ensure you have:</p>
+    <ul>
+        <li>Python 3.8 or higher installed</li>
+        <li>R 4.0 or higher installed</li>
+        <li>Git installed</li>
+        <li>Required API keys:
+            <ul>
+                <li>OpenAI API key</li>
+                <li>DeepSeek API key</li>
+            </ul>
+        </li>
+    </ul>
+
+    <h2 id="local-deployment">2. Local Deployment</h2>
+    <h3>2.1 Basic Setup</h3>
+    <pre><code># Clone the repository
+git clone [repository-url]
+cd systematic-review-agent
+
+# Create and activate virtual environment
+python -m venv venv
+source venv/bin/activate  # On Windows: venv\Scripts\activate
+
+# Install dependencies
+pip install -r requirements.txt
+
+# Install R packages
+R -e "install.packages('devtools')"
+R -e "devtools::install_github('massimoaria/pubmedR')"
+R -e "install.packages('bibliometrix')"
+
+# Create .env file
+echo "OPENAI_API_KEY=your_openai_api_key" > .env
+echo "DEEPSEEK_API_KEY=your_deepseek_api_key" >> .env</code></pre>
+
+    <h3>2.2 Running Locally</h3>
+    <pre><code>streamlit run app.py</code></pre>
+    <p>The app will be available at <code>http://localhost:8501</code></p>
+
+    <h2 id="streamlit-cloud">3. Deployment on Streamlit Cloud</h2>
+    <div class="note">
+        Streamlit Cloud is the easiest way to deploy Streamlit apps. It's free for public repositories and offers paid plans for private repositories.
+    </div>
+
+    <h3>3.1 Preparation</h3>
+    <ol>
+        <li>Push your code to a GitHub repository</li>
+        <li>Create a <code>requirements.txt</code> file (already included)</li>
+        <li>Create a <code>.streamlit/secrets.toml</code> file with your API keys:
+            <pre><code>[secrets]
+OPENAI_API_KEY = "your_openai_api_key"
+DEEPSEEK_API_KEY = "your_deepseek_api_key"</code></pre>
+        </li>
+    </ol>
+
+    <h3>3.2 Deployment Steps</h3>
+    <ol>
+        <li>Go to <a href="https://share.streamlit.io">share.streamlit.io</a></li>
+        <li>Sign in with your GitHub account</li>
+        <li>Click "New app"</li>
+        <li>Select your repository, branch, and main file (app.py)</li>
+        <li>Click "Deploy"</li>
+    </ol>
+
+    <h2 id="heroku">4. Deployment on Heroku</h2>
+    <h3>4.1 Preparation</h3>
+    <ol>
+        <li>Create a <code>Procfile</code>:
+            <pre><code>web: streamlit run app.py --server.port $PORT</code></pre>
+        </li>
+        <li>Create a <code>runtime.txt</code>:
+            <pre><code>python-3.9.16</code></pre>
+        </li>
+        <li>Add Heroku buildpacks:
+            <pre><code>heroku buildpacks:add heroku/python
+heroku buildpacks:add heroku/r</code></pre>
+        </li>
+    </ol>
+
+    <h3>4.2 Deployment Steps</h3>
+    <pre><code># Login to Heroku
+heroku login
+
+# Create Heroku app
+heroku create your-app-name
+
+# Set environment variables
+heroku config:set OPENAI_API_KEY=your_openai_api_key
+heroku config:set DEEPSEEK_API_KEY=your_deepseek_api_key
+
+# Deploy
+git push heroku main</code></pre>
+
+    <h2 id="aws">5. Deployment on AWS</h2>
+    <h3>5.1 Using AWS Elastic Beanstalk</h3>
+    <ol>
+        <li>Install AWS CLI and EB CLI</li>
+        <li>Create <code>.ebextensions/01_packages.config</code>:
+            <pre><code>packages:
+  yum:
+    R: []
+    gcc: []
+    gcc-c++: []
+    gcc-gfortran: []
+    readline-devel: []
+    libxml2-devel: []
+    openssl-devel: []
+    libcurl-devel: []</code></pre>
+        </li>
+        <li>Initialize EB application:
+            <pre><code>eb init -p python-3.9 your-app-name</code></pre>
+        </li>
+        <li>Create environment:
+            <pre><code>eb create your-env-name</code></pre>
+        </li>
+    </ol>
+
+    <h2 id="troubleshooting">6. Troubleshooting</h2>
+    <div class="warning">
+        <h3>Common Issues</h3>
+        <ul>
+            <li><strong>R Package Installation Failures</strong>
+                <p>Solution: Ensure R is properly installed and accessible from the command line. Try installing packages manually first.</p>
+            </li>
+            <li><strong>API Key Issues</strong>
+                <p>Solution: Verify API keys are correctly set in environment variables or secrets files.</p>
+            </li>
+            <li><strong>Memory Issues</strong>
+                <p>Solution: Increase available memory in your deployment platform or optimize the code for memory usage.</p>
+            </li>
+        </ul>
+    </div>
+
+    <h3>6.1 Logs and Debugging</h3>
+    <ul>
+        <li>Streamlit Cloud: View logs in the dashboard</li>
+        <li>Heroku: <code>heroku logs --tail</code></li>
+        <li>AWS: View logs in CloudWatch or EB dashboard</li>
+    </ul>
+
+    <div class="note">
+        <h3>Best Practices</h3>
+        <ul>
+            <li>Always use environment variables for sensitive information</li>
+            <li>Implement proper error handling and logging</li>
+            <li>Regularly update dependencies for security patches</li>
+            <li>Monitor application performance and resource usage</li>
+        </ul>
+    </div>
+
+    <footer style="margin-top: 50px; border-top: 1px solid #eee; padding-top: 20px;">
+        <p>Last updated: March 2024</p>
+    </footer>
+</body>
+</html> 

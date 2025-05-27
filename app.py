@@ -18,13 +18,50 @@ import altair as alt
 import ast
 import time
 import threading
-from datetime import datetime
+from datetime import datetime, timezone
 from fpdf import FPDF
 import io
 import base64
 
 # Load environment variables
 load_dotenv()
+
+# Add this after the imports and before any other code
+def is_off_peak():
+    """Check if current time is during off-peak hours (16:30-00:30 UTC)"""
+    current_time = datetime.now(timezone.utc).time()
+    off_peak_start = datetime.strptime("16:30", "%H:%M").time()
+    off_peak_end = datetime.strptime("00:30", "%H:%M").time()
+    
+    if off_peak_start <= current_time or current_time < off_peak_end:
+        return True
+    return False
+
+def get_deepseek_pricing(model_name, is_cache_hit=True):
+    """Get the current pricing for DeepSeek models based on time and cache status"""
+    off_peak = is_off_peak()
+    
+    if model_name == "Deepseek-chat (V3)":
+        if off_peak:
+            input_price = 0.000035 if is_cache_hit else 0.000135  # 50% off
+            output_price = 0.00055  # 50% off
+        else:
+            input_price = 0.00007 if is_cache_hit else 0.00027  # Standard pricing
+            output_price = 0.0011  # Standard pricing
+    else:  # Deepseek-reasoner (R1)
+        if off_peak:
+            input_price = 0.000035 if is_cache_hit else 0.000135  # 75% off
+            output_price = 0.00055  # 75% off
+        else:
+            input_price = 0.00014 if is_cache_hit else 0.00055  # Standard pricing
+            output_price = 0.00219  # Standard pricing
+    
+    return {
+        "input_price": input_price,
+        "output_price": output_price,
+        "is_off_peak": off_peak,
+        "discount": "50%" if model_name == "Deepseek-chat (V3)" else "75%"
+    }
 
 # Set page config with custom theme
 st.set_page_config(
@@ -226,13 +263,13 @@ with st.sidebar:
     if model_provider == "OpenAI":
         model = st.selectbox(
             "Select OpenAI Model",
-            ["gpt-4", "gpt-3.5-turbo"],
+            ["gpt-4o", "gpt-o3"],
             help="Choose the OpenAI model to use"
         )
     else:
         model = st.selectbox(
             "Select DeepSeek Model",
-            ["deepseek-chat", "deepseek-coder"],
+            ["Deepseek-chat (V3)", "Deepseek-reasoner (R1)"],
             help="Choose the DeepSeek model to use"
         )
     
@@ -259,8 +296,14 @@ def suggest_search_terms(topic):
                 "Authorization": f"Bearer {os.getenv('DEEPSEEK_API_KEY')}",
                 "Content-Type": "application/json"
             }
+            # Map display names to API model names
+            model_mapping = {
+                "Deepseek-chat (V3)": "deepseek-chat",
+                "Deepseek-reasoner (R1)": "deepseek-reasoner"
+            }
+            api_model = model_mapping.get(st.session_state.model, "deepseek-chat")
             data = {
-                "model": st.session_state.model,
+                "model": api_model,
                 "messages": [
                     {"role": "system", "content": "You are a systematic review expert. Generate PubMed search terms for the given research topic."},
                     {"role": "user", "content": f"Generate PubMed search terms for: {topic}"}
@@ -314,19 +357,6 @@ def run_pubmed_search(search_terms):
         df = pd.DataFrame(records)
         df.to_csv("pubmed_search_results.csv", index=False)
         st.success(f"Found {len(all_ids)} articles. Results saved.")
-        # Split author names by semicolon or comma
-        if 'AU' in df.columns:
-            def split_authors(val):
-                if pd.isnull(val):
-                    return val
-                # Try splitting by semicolon first, then comma
-                if ';' in str(val):
-                    return [a.strip() for a in str(val).split(';') if a.strip()]
-                elif ',' in str(val):
-                    return [a.strip() for a in str(val).split(',') if a.strip()]
-                else:
-                    return [val] if val else []
-            df['AU'] = df['AU'].apply(split_authors)
         return True, df
     except Exception as e:
         st.error(f"Error running PubMed search: {type(e).__name__}: {str(e)}\n\nCheck your query format and internet connection.")
@@ -338,6 +368,14 @@ def run_screening(criteria):
         # Save criteria to a temporary file
         with open('screening_criteria.txt', 'w') as f:
             f.write(json.dumps(criteria))
+        
+        # Save the selected model to a file for the screening script to use
+        model_info = {
+            "provider": st.session_state.model_provider,
+            "model": st.session_state.model
+        }
+        with open('model_selection.json', 'w') as f:
+            f.write(json.dumps(model_info))
         
         # Run the screening script
         subprocess.run(['python', 'screening.py'], check=True)
@@ -401,10 +439,10 @@ def generate_pdf_report(search_terms, df):
     total_tokens_deepseek = (df['TI'].fillna('').apply(lambda x: max(1, int(len(x)/4))) + df['AB'].fillna('').apply(lambda x: max(1, int(len(x)/4)))).sum()
     
     model_prices = [
-        {"Model": "gpt-3.5-turbo", "Price": 0.0005, "Tokens": total_tokens_gpt},
-        {"Model": "gpt-4", "Price": 0.01, "Tokens": total_tokens_gpt},
-        {"Model": "deepseek-chat", "Price": 0.0002, "Tokens": total_tokens_deepseek},
-        {"Model": "deepseek-coder", "Price": 0.0002, "Tokens": total_tokens_deepseek}
+        {"Model": "gpt-o3", "Price": 0.01, "Tokens": total_tokens_gpt},  # $10 per 1M tokens
+        {"Model": "gpt-4o", "Price": 0.005, "Tokens": total_tokens_gpt},  # $5 per 1M tokens
+        {"Model": "Deepseek-chat (V3)", "Price": 0.0002, "Tokens": total_tokens_deepseek},
+        {"Model": "Deepseek-reasoner (R1)", "Price": 0.0002, "Tokens": total_tokens_deepseek}
     ]
     
     # Add cost table
@@ -583,43 +621,35 @@ def generate_pdf_report(search_terms, df):
                 data.append({'Keyword': kw, 'Section': 'Abstract', 'Count': abstract_count})
             
             keyword_df = pd.DataFrame(data)
-            
-            plt.figure(figsize=(8, 4))
-            pivot_df = keyword_df.pivot(index='Keyword', columns='Section', values='Count')
-            pivot_df.plot(kind='bar', stacked=True)
-            plt.title('Keyword Occurrence in Titles and Abstracts')
-            plt.xlabel('Keyword')
-            plt.ylabel('Count')
-            plt.xticks(rotation=45)
-            plt.tight_layout()
-            
-            # Save plot to bytes
-            img_bytes = io.BytesIO()
-            plt.savefig(img_bytes, format='png', dpi=150)
-            img_bytes.seek(0)
-            plt.close()
-            
-            # Add plot to PDF
-            pdf.set_font("Arial", "B", 12)
-            pdf.cell(0, 10, "Keyword Analysis", ln=True)
-            pdf.image(img_bytes, x=10, y=None, w=190)
-            
-            # Add small table
-            pdf.set_font("Arial", "B", 10)
-            pdf.cell(80, 10, "Keyword", 1)
-            pdf.cell(50, 10, "Title Count", 1)
-            pdf.cell(50, 10, "Abstract Count", 1)
-            pdf.ln()
-            
-            pdf.set_font("Arial", "", 10)
-            for kw in keywords:
-                title_count = df['TI'].astype(str).str.contains(kw, case=False, na=False).sum()
-                abstract_count = df['AB'].astype(str).str.contains(kw, case=False, na=False).sum()
-                pdf.cell(80, 10, str(kw)[:30], 1)
-                pdf.cell(50, 10, str(title_count), 1)
-                pdf.cell(50, 10, str(abstract_count), 1)
-                pdf.ln()
-            pdf.ln(5)
+            keyword_df['KeywordTrunc'] = keyword_df['Keyword'].apply(lambda x: x[:16] + '…' if len(x) > 16 else x)
+            if not keyword_df.empty:
+                chart = alt.Chart(keyword_df).mark_bar().encode(
+                    x=alt.X('KeywordTrunc:N', sort=None, axis=alt.Axis(labelAngle=35, labelLimit=1000, tickCount=len(keyword_df['Keyword'].unique()), labelOverlap=False, title='Keyword')),
+                    y=alt.Y('Count:Q', stack='zero'),
+                    color=alt.Color('Section:N', scale=alt.Scale(domain=['Title', 'Abstract'], range=['#0a84ff', '#30d158'])),
+                    tooltip=['Keyword', 'Section', 'Count']
+                ).configure_view(
+                    fill='transparent'
+                ).configure_axis(
+                    grid=False,
+                    domain=False,
+                    labelColor='#fff',
+                    titleColor='#fff',
+                    ticks=False,
+                    tickColor='transparent',
+                    tickBand='extent'
+                ).configure_header(
+                    labelColor='#fff',
+                    titleColor='#fff',
+                    labelFontSize=13,
+                    titleFontSize=14,
+                    labelFontWeight='normal'
+                ).configure(
+                    background='transparent'
+                )
+                st.altair_chart(chart, use_container_width=True)
+                with st.expander('Keyword Table', expanded=False):
+                    st.dataframe(keyword_df, use_container_width=True, hide_index=True)
     
     # Save PDF
     pdf_path = "pubmed_search_report.pdf"
@@ -688,15 +718,17 @@ with st.container():
                 # Split author names by semicolon or comma
                 if 'AU' in df.columns:
                     def split_authors(val):
-                        if pd.isnull(val):
+                        if pd.isna(val):
+                            return []
+                        if isinstance(val, list):
                             return val
-                        # Try splitting by semicolon first, then comma
-                        if ';' in str(val):
-                            return [a.strip() for a in str(val).split(';') if a.strip()]
-                        elif ',' in str(val):
-                            return [a.strip() for a in str(val).split(',') if a.strip()]
+                        val_str = str(val)
+                        if ';' in val_str:
+                            return [a.strip() for a in val_str.split(';') if a.strip()]
+                        elif ',' in val_str:
+                            return [a.strip() for a in val_str.split(',') if a.strip()]
                         else:
-                            return [val] if val else []
+                            return [val_str] if val_str.strip() else []
                     df['AU'] = df['AU'].apply(split_authors)
                 # Save the processed file
                 df.to_csv("pubmed_search_results.csv", index=False)
@@ -1069,15 +1101,72 @@ if st.session_state.search_completed:
         crit_tokens_deepseek = (max(1, int(len(inclusion_criteria)/4)) + max(1, int(len(exclusion_criteria)/4))) * max(1, n_articles)
         total_tokens_gpt += crit_tokens_gpt
         total_tokens_deepseek += crit_tokens_deepseek
+
+        # Calculate estimated token usage (assuming 1:1 input/output ratio for simplicity)
+        estimated_input_tokens = total_tokens_deepseek // 2
+        estimated_output_tokens = total_tokens_deepseek // 2
+        
+        # Get DeepSeek pricing
+        deepseek_chat_pricing = get_deepseek_pricing("Deepseek-chat (V3)")
+        deepseek_reasoner_pricing = get_deepseek_pricing("Deepseek-reasoner (R1)")
+        
         model_prices = [
-            {"Model": "gpt-3.5-turbo", "Price": 0.0005, "Tokens": total_tokens_gpt},
-            {"Model": "gpt-4", "Price": 0.01, "Tokens": total_tokens_gpt},
-            {"Model": "deepseek-chat", "Price": 0.0002, "Tokens": total_tokens_deepseek},
-            {"Model": "deepseek-coder", "Price": 0.0002, "Tokens": total_tokens_deepseek}
+            {
+                "Model": "gpt-o3",
+                "Price": 0.01,
+                "Tokens": total_tokens_gpt,
+                "Type": "OpenAI"
+            },
+            {
+                "Model": "gpt-4o",
+                "Price": 0.005,
+                "Tokens": total_tokens_gpt,
+                "Type": "OpenAI"
+            },
+            {
+                "Model": "Deepseek-chat (V3)",
+                "Price": deepseek_chat_pricing["input_price"],
+                "Output Price": deepseek_chat_pricing["output_price"],
+                "Input Tokens": estimated_input_tokens,
+                "Output Tokens": estimated_output_tokens,
+                "Type": "DeepSeek",
+                "Is Off Peak": deepseek_chat_pricing["is_off_peak"],
+                "Discount": deepseek_chat_pricing["discount"]
+            },
+            {
+                "Model": "Deepseek-reasoner (R1)",
+                "Price": deepseek_reasoner_pricing["input_price"],
+                "Output Price": deepseek_reasoner_pricing["output_price"],
+                "Input Tokens": estimated_input_tokens,
+                "Output Tokens": estimated_output_tokens,
+                "Type": "DeepSeek",
+                "Is Off Peak": deepseek_reasoner_pricing["is_off_peak"],
+                "Discount": deepseek_reasoner_pricing["discount"]
+            }
         ]
+        
+        # Calculate costs
+        for price in model_prices:
+            if price["Type"] == "OpenAI":
+                price["Estimated Cost (USD)"] = 2 * price["Price"] * (price["Tokens"] / 1000)
+            else:
+                input_cost = price["Price"] * (price["Input Tokens"] / 1000)
+                output_cost = price["Output Price"] * (price["Output Tokens"] / 1000)
+                price["Estimated Cost (USD)"] = input_cost + output_cost
+        
         price_df = pd.DataFrame(model_prices)
-        price_df['Estimated Cost (USD)'] = 2 * price_df['Price'] * (price_df['Tokens'] / 1000)
+        
+        # Add off-peak notice with more details
+        if any(p["Is Off Peak"] for p in model_prices if p["Type"] == "DeepSeek"):
+            st.info("""
+            🕒 Currently in off-peak hours (16:30-00:30 UTC)
+            - Deepseek-chat (V3): 50% discount
+            - Deepseek-reasoner (R1): 75% discount
+            """)
+        
         st.markdown('<h4 style="font-size:1.1em;font-weight:600;margin-top:0.5em;margin-bottom:0.5em;">Estimated Screening Cost by Model</h4>', unsafe_allow_html=True)
+        
+        # Display the cost chart
         chart = alt.Chart(price_df).mark_bar(size=30).encode(
             x=alt.X('Model:N', axis=alt.Axis(title='Model', labelAngle=0)),
             y=alt.Y('Estimated Cost (USD):Q', axis=alt.Axis(title='Estimated Cost (USD)', format="$,.2f")),
@@ -1102,14 +1191,62 @@ if st.session_state.search_completed:
             background='transparent'
         )
         st.altair_chart(chart, use_container_width=True)
+        
+        # Add pricing details in an expander
+        with st.expander("Detailed Pricing Information", expanded=False):
+            st.markdown("""
+            **DeepSeek Model Pricing:**
+            
+            **Standard Hours (00:30-16:30 UTC)**
+            - Deepseek-chat (V3):
+              - Input (Cache Hit): $0.07 per 1M tokens
+              - Input (Cache Miss): $0.27 per 1M tokens
+              - Output: $1.10 per 1M tokens
+            
+            - Deepseek-reasoner (R1):
+              - Input (Cache Hit): $0.14 per 1M tokens
+              - Input (Cache Miss): $0.55 per 1M tokens
+              - Output: $2.19 per 1M tokens
+            
+            **Off-Peak Hours (16:30-00:30 UTC)**
+            - Deepseek-chat (V3): 50% discount on all rates
+            - Deepseek-reasoner (R1): 75% discount on all rates
+            
+            **OpenAI Model Pricing:**
+            - gpt-o3: $10.00 per 1M tokens
+            - gpt-4o: $5.00 per 1M tokens
+            
+            *Note: The cost estimation assumes a 1:1 ratio of input to output tokens for DeepSeek models.
+            Actual costs may vary based on the specific content and model behavior.*
+            """)
+            
+            # Show current pricing table
+            st.markdown("### Current Pricing (per 1M tokens)")
+            current_pricing = pd.DataFrame([
+                {
+                    "Model": "Deepseek-chat (V3)",
+                    "Input (Cache Hit)": f"${deepseek_chat_pricing['input_price']*1000:.3f}",
+                    "Input (Cache Miss)": f"${(deepseek_chat_pricing['input_price']*4)*1000:.3f}",
+                    "Output": f"${deepseek_chat_pricing['output_price']*1000:.3f}",
+                    "Status": "Off-Peak" if deepseek_chat_pricing["is_off_peak"] else "Standard"
+                },
+                {
+                    "Model": "Deepseek-reasoner (R1)",
+                    "Input (Cache Hit)": f"${deepseek_reasoner_pricing['input_price']*1000:.3f}",
+                    "Input (Cache Miss)": f"${(deepseek_reasoner_pricing['input_price']*4)*1000:.3f}",
+                    "Output": f"${deepseek_reasoner_pricing['output_price']*1000:.3f}",
+                    "Status": "Off-Peak" if deepseek_reasoner_pricing["is_off_peak"] else "Standard"
+                }
+            ])
+            st.dataframe(current_pricing, use_container_width=True)
 
         # --- F1-Score Comparison Graph (side-by-side bars) ---
         f1_data = [
             {"Model": "Human Alpha", "F1-Score": 0.819},
             {"Model": "Human Bravo", "F1-Score": 0.804},
             {"Model": "Human Charlie", "F1-Score": 0.832},
-            {"Model": "GPT-3.5", "F1-Score": 0.628},
-            {"Model": "GPT-4", "F1-Score": 0.732},
+            {"Model": "gpt-o3", "F1-Score": 0.628},
+            {"Model": "gpt-4o", "F1-Score": 0.732},
             {"Model": "GPT-4o", "F1-Score": 0.862},
             {"Model": "Gemini 1.5 Pro", "F1-Score": 0.813},
             {"Model": "LLaMA 3", "F1-Score": 0.695},
@@ -1147,7 +1284,31 @@ if st.session_state.search_completed:
         test_on_100 = st.checkbox("Test on 10 abstracts before full dataset (recommended)", value=False)
         st.caption("Test on a random batch of 10 abstracts and perform a human review to estimate the F1-score for your run before scaling to the full dataset.")
 
+        # Display selected model information
+        st.info(f"Selected Model: {st.session_state.model_provider} - {st.session_state.model}")
+
         if st.button("Start Screening", use_container_width=True):
+            # Clean up existing files
+            cleanup_files = [
+                'decision/Screened_Papers_0.txt',
+                'decision/Combined_Aging_Screening.json',
+                'decision/Combined_Aging_Screening.csv',
+                'progress_tracking/screening_progress.json'
+            ]
+            
+            for file_path in cleanup_files:
+                try:
+                    if os.path.exists(file_path):
+                        os.remove(file_path)
+                except Exception as e:
+                    print(f"Error removing {file_path}: {str(e)}")
+            
+            # Reset progress tracking
+            progress_dir = Path('progress_tracking')
+            progress_dir.mkdir(exist_ok=True)
+            with open(progress_dir / 'screening_progress.json', 'w') as f:
+                json.dump({'current': 0, 'total': 0, 'percentage': 0}, f)
+            
             criteria = {
                 "inclusion": inclusion_criteria.split('\n'),
                 "exclusion": exclusion_criteria.split('\n')
@@ -1162,39 +1323,50 @@ if st.session_state.search_completed:
                 sample_df = df.sample(n=min(10, len(df)), random_state=42)
                 sample_df.to_csv("pubmed_search_results.csv", index=False)
             
-            # Start the screening process in a separate thread
-            screening_thread = threading.Thread(
-                target=lambda: run_screening(criteria)
-            )
-            screening_thread.start()
-            
-            # Update status while screening is running
-            while screening_thread.is_alive():
-                progress = get_screening_progress()
-                current = progress['current']
-                total = progress['total']
-                if total > 0:
-                    status_text.text(f"Processing paper {current} of {total}")
-                time.sleep(0.1)  # Update every 100ms
-            
-            # After screening completes, run the subsequent scripts
             try:
-                status_text.text("Combining results...")
-                subprocess.run(['python', 'combine_results.py'], check=True)
+                # Run the screening process
+                status_text.text("Starting screening process...")
+                success = run_screening(criteria)
                 
-                status_text.text("Converting to CSV...")
-                subprocess.run(['python', 'json_to_csv.py'], check=True)
-                
-                status_text.text("Screening completed!")
-                st.session_state.screening_completed = True
-                st.success("Screening completed! Results are ready.")
-                
-                # Force a rerun to show the results
-                st.experimental_rerun()
+                if success:
+                    # Wait for the screening results file to be created
+                    max_wait = 30  # Maximum wait time in seconds
+                    wait_interval = 1  # Check every second
+                    waited = 0
+                    
+                    while waited < max_wait:
+                        if os.path.exists('decision/Screened_Papers_0.txt'):
+                            # Wait a bit more to ensure file is completely written
+                            time.sleep(2)
+                            break
+                        time.sleep(wait_interval)
+                        waited += wait_interval
+                        status_text.text(f"Waiting for screening results... ({waited}s)")
+                    
+                    if os.path.exists('decision/Screened_Papers_0.txt'):
+                        status_text.text("Combining results...")
+                        subprocess.run(['python', 'combine_results.py'], check=True)
+                        
+                        status_text.text("Converting to CSV...")
+                        subprocess.run(['python', 'json_to_csv.py'], check=True)
+                        
+                        status_text.text("Screening completed!")
+                        st.session_state.screening_completed = True
+                        st.success("Screening completed! Results are ready.")
+                        
+                        # Force a rerun to show the results
+                        st.rerun()
+                    else:
+                        st.error("Screening process timed out. Please check the logs for errors.")
+                else:
+                    st.error("Screening process failed. Please check the logs for errors.")
                 
             except subprocess.CalledProcessError as e:
                 st.error(f"Error in post-processing: {str(e)}")
                 status_text.text("Error occurred during post-processing")
+            except Exception as e:
+                st.error(f"An unexpected error occurred: {str(e)}")
+                status_text.text("An unexpected error occurred")
 
 # Step 3: Results
 if st.session_state.screening_completed:

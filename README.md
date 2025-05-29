@@ -20,10 +20,25 @@ This tool helps you automate the process of screening research papers for system
    - Export your results for further analysis
 
 3. **Required API Keys**
-   - OpenAI API key (for paper analysis)
-   - DeepSeek API key (for additional analysis)
-   - NCBI Entrez credentials (for paper search)
-   - Don't worry if you don't have these - we can help you obtain them
+   - **DeepSeek API Key** (Primary)
+     1. Go to [DeepSeek AI](https://platform.deepseek.com/)
+     2. Sign up for a free account
+     3. Navigate to API Keys section
+     4. Create a new API key
+   
+   - **OpenAI API Key** (Alternative)
+     1. Visit [OpenAI Platform](https://platform.openai.com/)
+     2. Sign up or log in
+     3. Go to API Keys section
+     4. Create a new secret key
+   
+   - **NCBI Entrez Credentials** (Required for PubMed search)
+     1. Go to [NCBI Account](https://ncbiinsights.ncbi.nlm.nih.gov/2017/11/02/new-api-keys-for-the-e-utilities/)
+     2. Sign in or create an account
+     3. Request an API key
+     4. Use your email address as the Entrez email
+
+   Don't worry if you don't have these - we can help you obtain them.
 
 ## How It Works (Technical Overview)
 
@@ -35,10 +50,9 @@ The system uses a combination of AI technologies to automate systematic review s
    - Handles large result sets with automatic batching
 
 2. **AI Analysis**
-   - Uses OpenAI's GPT models for initial paper screening
-   - Supports DeepSeek models (Deepseek-chat V3 or Deepseek-reasoner R1)
-   - Evaluates papers against your inclusion/exclusion criteria
+   - Uses AI models to evaluate papers against your criteria
    - Provides detailed explanations for each decision
+   - Supports both DeepSeek and OpenAI models
 
 3. **Screening Process**
    - Processes papers in parallel for efficiency

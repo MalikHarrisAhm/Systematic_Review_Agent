@@ -2,11 +2,11 @@
 
 An intelligent tool that automates the systematic review screening process using advanced AI models.
 
-## Instructions for Non-ML Specialists
+## Getting Started Guide
 
 This tool helps you automate the process of screening research papers for systematic reviews. Here's how to use it:
 
-1. **Getting Started**
+1. **First Steps**
    - You'll need to obtain API keys for the services we use (instructions below)
    - The tool runs in your web browser, so no technical setup is required if you use the hosted version
 

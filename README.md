@@ -47,18 +47,15 @@ The system uses a combination of AI technologies to automate systematic review s
    - Supports both manual and AI-generated search queries
    - Handles large result sets with automatic batching
 
-2. **AI Analysis**
-   - Uses AI models to evaluate papers against your criteria
-   - Provides detailed explanations for each decision
-   - Supports both DeepSeek and OpenAI models
-
-3. **Screening Process**
+2. **Screening Process**
+   - Uses AI models to evaluate papers against your inclusion/exclusion criteria
+   - Provides detailed explanations for each decision (include/exclude)
    - Processes papers in parallel for efficiency
    - Real-time progress tracking
    - Saves results in both JSON and CSV formats
    - Supports batch processing with progress tracking
 
-4. **User Interface**
+3. **User Interface**
    - Modern web-based interface for easy interaction
    - Real-time progress tracking and visual feedback
    - Cost estimation for different AI models

@@ -38,8 +38,6 @@ This tool helps you automate the process of screening research papers for system
      3. Request an API key
      4. Use your email address as the Entrez email
 
-   Don't worry if you don't have these - we can help you obtain them.
-
 ## How It Works (Technical Overview)
 
 The system uses a combination of AI technologies to automate systematic review screening:

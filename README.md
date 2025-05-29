@@ -11,8 +11,10 @@ This tool helps you automate the process of screening research papers for system
    - The tool runs in your web browser, so no technical setup is required if you use the hosted version
 
 2. **Using the Tool**
-   - Enter your research question or topic
-   - The tool will automatically search relevant databases for papers
+   - Choose how to search for papers:
+     * **Manual Search**: Enter your PubMed search query using PubMed's advanced search syntax
+     * **AI-Generated Search**: Describe your research topic in plain language, and our AI will generate appropriate search terms
+   - The tool will search PubMed and retrieve relevant papers
    - It will analyze and categorize papers based on your criteria
    - You can review and adjust the AI's decisions
    - Export your results for further analysis
@@ -28,24 +30,27 @@ This tool helps you automate the process of screening research papers for system
 The system uses a combination of AI technologies to automate systematic review screening:
 
 1. **Paper Collection**
-   - Searches multiple academic databases using the NCBI Entrez API
-   - Automatically retrieves full text when available
-   - Handles different paper formats and sources
+   - Searches PubMed using the NCBI Entrez API
+   - Supports both manual and AI-generated search queries
+   - Handles large result sets with automatic batching
 
 2. **AI Analysis**
-   - Uses OpenAI's GPT models to understand paper content
-   - Employs DeepSeek for additional analysis and verification
-   - Identifies key information like study design, population, and outcomes
+   - Uses OpenAI's GPT models for initial paper screening
+   - Supports DeepSeek models (Deepseek-chat V3 or Deepseek-reasoner R1)
+   - Evaluates papers against your inclusion/exclusion criteria
+   - Provides detailed explanations for each decision
 
 3. **Screening Process**
-   - Automatically categorizes papers based on inclusion/exclusion criteria
-   - Provides confidence scores for its decisions
-   - Allows human review and correction of AI decisions
+   - Processes papers in parallel for efficiency
+   - Real-time progress tracking
+   - Saves results in both JSON and CSV formats
+   - Supports batch processing with progress tracking
 
 4. **User Interface**
    - Modern web-based interface for easy interaction
    - Real-time progress tracking and visual feedback
-   - Simple export functionality for results
+   - Cost estimation for different AI models
+   - Export results in CSV or JSON format
 
 ## Local Development
 
